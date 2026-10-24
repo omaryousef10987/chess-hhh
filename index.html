@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المساعد الذكي الفعلي للشطرنج - بالكاميرا</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px;
+        }
+        header {
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+        h1 {
+            font-size: 1.25rem;
+            color: #38bdf8;
+            margin-bottom: 4px;
+        }
+        p.subtitle {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 380px;
+            background: #1e293b;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 2px solid #334155;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #canvasSnapshot {
+            display: none;
+        }
+        /* شبكة الإحداثيات فوق الكاميرا */
+        .overlay-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            pointer-events: none;
+            padding: 10px;
+        }
+        .cell {
+            border: 1px dashed rgba(255, 255, 255, 0.08);
+            position: relative;
+        }
+        .cell::after {
+            content: attr(data-coord);
+            position: absolute;
+            bottom: 1px;
+            right: 2px;
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+        /* المربع الأزرق للقطعة المراد تحريكها */
+        .highlight-blue {
+            border: 3px solid #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.45);
+            box-shadow: 0 0 15px #3b82f6;
+            animation: pulseBlue 1.2s infinite;
+        }
+        /* المربع الأخضر لمكان النقل */
+        .highlight-green {
+            border: 3px solid #22c55e !important;
+            background-color: rgba(34, 197, 94, 0.45);
+            box-shadow: 0 0 15px #22c55e;
+            animation: pulseGreen 1.2s infinite;
+        }
+        @keyframes pulseBlue {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; transform: scale(1.04); }
+            100% { opacity: 0.7; }
+        }
+        @keyframes pulseGreen {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; transform: scale(1.04); }
+            100% { opacity: 0.7; }
+        }
+        .instruction-box {
+            width: 100%;
+            max-width: 500px;
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 14px;
+            margin-top: 12px;
+            border-right: 4px solid #3b82f6;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+        .instruction-title {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+        .instruction-text {
+            font-size: 1.05rem;
+            font-weight: bold;
+            color: #f8fafc;
+        }
+        .api-config {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 10px;
+        }
+        .api-config input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #f8fafc;
+            font-size: 0.85rem;
+        }
+        .controls {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        button {
+            flex: 1;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:active {
+            background: #2563eb;
+        }
+        button.analyze-btn {
+            background: #10b981;
+        }
+        button.analyze-btn:active {
+            background: #059669;
+        }
+        button.secondary {
+            background: #334155;
+            color: #cbd5e1;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            background: #7f1d1d;
+            color: #fca5a5;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <span class="status-badge" id="camStatus">الكاميرا متوقفة</span>
+        <h1>مساعد الشطرنج البصري الذكي</h1>
+        <p class="subtitle">وجّه الكاميرا للرقعة واضغط تحليل لتحديد النقلة فوراً</p>
+    </header>
+
+    <div class="api-config">
+        <input type="password" id="apiKeyInput" placeholder="أدخل Gemini API Key هنا (اختياري لو مدمج)" />
+    </div>
+
+    <div class="camera-container">
+        <video id="videoElement" autoplay playsinline muted></video>
+        <canvas id="canvasSnapshot"></canvas>
+        <!-- شبكة 8x8 للإحداثيات -->
+        <div class="overlay-grid" id="overlayGrid"></div>
+    </div>
+
+    <div class="instruction-box">
+        <div class="instruction-title">تحليل الذكاء الاصطناعي للرقعة الحقيقية:</div>
+        <div class="instruction-text" id="moveInstruction">قم بتشغيل الكاميرا وتوجيهها نحو رقعة الشطرنج...</div>
+    </div>
+
+    <div class="controls">
+        <button id="toggleCamBtn" onclick="toggleCamera()">تشغيل الكاميرا</button>
+        <button class="analyze-btn" id="analyzeBtn" onclick="captureAndAnalyze()" disabled>تحليل الرقعة الآن</button>
+    </div>
+
+    <script>
+        let videoStream = null;
+        let isCameraActive = false;
+
+        // مصفوفة أسماء المربعات القياسية للشطرنج (من a8 إلى h1)
+        const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const grid = document.getElementById('overlayGrid');
+        const cellIds = [];
+
+        for (let row = 8; row >= 1; row--) {
+            for (let col = 0; col < 8; col++) {
+                const coord = files[col] + row;
+                cellIds.push(coord);
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${coord}`;
+                cell.setAttribute('data-coord', coord);
+                grid.appendChild(cell);
+            }
+        }
+
+        async function toggleCamera() {
+            const video = document.getElementById('videoElement');
+            const btn = document.getElementById('toggleCamBtn');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const statusBadge = document.getElementById('camStatus');
+
+            if (!isCameraActive) {
+                try {
+                    videoStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: { exact: "environment" } },
+                        audio: false
+                    }).catch(() => {
+                        return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    });
+
+                    video.srcObject = videoStream;
+                    isCameraActive = true;
+                    btn.textContent = "إيقاف الكاميرا";
+                    btn.style.background = "#ef4444";
+                    analyzeBtn.disabled = false;
+                    statusBadge.textContent = "الكاميرا جاهزة للرصد";
+                    statusBadge.style.background = "#065f46";
+                    statusBadge.style.color = "#6ee7b7";
+                } catch (err) {
+                    alert("تعذر الوصول إلى كاميرا الجوال. تأكد من إعطاء الصلاحيات.");
+                    console.error(err);
+                }
+            } else {
+                if (videoStream) {
+                    videoStream.getTracks().forEach(track => track.stop());
+                }
+                video.srcObject = null;
+                isCameraActive = false;
+                btn.textContent = "تشغيل الكاميرا";
+                btn.style.background = "#3b82f6";
+                analyzeBtn.disabled = true;
+                statusBadge.textContent = "الكاميرا متوقفة";
+                statusBadge.style.background = "#7f1d1d";
+                statusBadge.style.color = "#fca5a5";
+                clearHighlights();
+                document.getElementById('moveInstruction').textContent = "قم بتشغيل الكاميرا وتوجيهها نحو رقعة الشطرنج...";
+            }
+        }
+
+        function clearHighlights() {
+            cellIds.forEach(coord => {
+                const cell = document.getElementById(`cell-${coord}`);
+                if (cell) cell.classList.remove('highlight-blue', 'highlight-green');
+            });
+        }
+
+        function applyMoveHighlight(fromSquare, toSquare, explanation) {
+            clearHighlights();
+            
+            // تفعيل المربع الأزرق للقطعة المراد تحريكها
+            const fromCell = document.getElementById(`cell-${fromSquare.toLowerCase()}`);
+            if (fromCell) fromCell.classList.add('highlight-blue');
+
+            // تفعيل المربع الأخضر لمكان الوجهة
+            const toCell = document.getElementById(`cell-${toSquare.toLowerCase()}`);
+            if (toCell) toCell.classList.add('highlight-green');
+
+            document.getElementById('moveInstruction').innerHTML = 
+                `حرّك القطعة من <span style="color:#3b82f6">${fromSquare.toUpperCase()}</span> إلى <span style="color:#22c55e">${toSquare.toUpperCase()}</span><br><small style="color:#94a3b8">${explanation}</small>`;
+        }
+
+        async function captureAndAnalyze() {
+            if (!isCameraActive) return;
+
+            const video = document.getElementById('videoElement');
+            const canvas = document.getElementById('canvasSnapshot');
+            const instructionEl = document.getElementById('moveInstruction');
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+            if (!apiKey) {
+                alert("يرجى إدخال مفتاح Gemini API Key في الحقل بالأعلى أولاً لكي يستطيع تحليل الصورة.");
+                return;
+            }
+
+            instructionEl.textContent = "جاري التقاط صورة الرقعة وتحليلها بالذكاء الاصطناعي...";
+
+            // التقاط صورة من الكاميرا
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            try {
+                // إرسال الصورة لرئيسية الذكاء الاصطناعي البصري لتحليل الموقف
+                const response = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                
+                const promptText = `أنت خبير شطرنج محترف ومساعد بصري. هذه صورة حقيقية لرقعة شطرنج أمام المستخدم. قم بتحليل وضعية القطع الحالية في الصورة بدقة، وحدد أفضل نقلة تكتيكية تالية للاعب. 
+                أجب بصيغة JSON فقط بدون أي نص إضافي كالتالي بالظبط:
+                {
+                  "from": "e2",
+                  "to": "e4",
+                  "explanation": "سبب قصير للنقلة بالعربية"
+                }`;
+
+                const apiResponse = await fetch(response, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: promptText },
+                                { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                            ]
+                        }]
+                    })
+                });
+
+                const data = await apiResponse.json();
+                const textResult = data.candidates[0].content.parts[0].text;
+                
+                // تنظيف الرد واستخراج الـ JSON
+                const cleanJson = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
+                const moveData = JSON.parse(cleanJson);
+
+                if (moveData.from && moveData.to) {
+                    applyMoveHighlight(moveData.from, moveData.to, moveData.explanation);
+                } else {
+                    instructionEl.textContent = "عذراً، لم يتمكن النظام من مطابقة الإحداثيات، جرب تحسين الإضاءة.";
+                }
+
+            } catch (err) {
+                console.error(err);
+                instructionEl.textContent = "حدث خطأ أثناء الاتصال بالذكاء الاصطناعي أو قراءة الصورة. تأكد من صحة المفتاح.";
+            }
+        }
+    </script>
+</body>
+</html>
